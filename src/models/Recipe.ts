@@ -3,6 +3,7 @@ import { pathExistsSync } from 'fs-extra';
 import { join } from 'path';
 import { DEFAULT_SERVICE_SETTINGS } from '../config';
 import { ifUndefined } from '../jsUtils';
+import Extension from './Extension';
 
 interface RecipeData {
   id: string;
@@ -25,6 +26,7 @@ interface RecipeData {
     local?: boolean;
     message?: string;
     allowFavoritesDelineationInUnreadCount?: boolean;
+    enabledExtensions?: string[];
   };
 }
 
@@ -49,6 +51,7 @@ export interface IRecipe {
   path: string;
   partition: string;
   local: boolean;
+  enabledExtensions: Extension[];
 
   readonly overrideUserAgent?: null | Function;
   readonly buildUrl?: null | Function;
@@ -108,11 +111,13 @@ export default class Recipe implements IRecipe {
   // TODO: Is this being used?
   local = false;
 
+  enabledExtensions: Extension[] = [];
+
   // TODO - [TS DEBT] introduced to address missing function but need to check how validateUrl is inherited / implemented in recipe
   validateUrl?: (url: string) => boolean;
 
   // TODO: Need to reconcile which of these are optional/mandatory
-  constructor(data: RecipeData) {
+  constructor(data: RecipeData, installedExtensions: Extension[]) {
     if (!data) {
       throw new Error('Recipe config not valid');
     }
@@ -179,6 +184,31 @@ export default class Recipe implements IRecipe {
       data.config.allowFavoritesDelineationInUnreadCount,
       this.allowFavoritesDelineationInUnreadCount,
     );
+
+    const enabledExtensionsIds = ifUndefined<string[]>(
+      data.config.enabledExtensions,
+      [],
+    );
+
+    this.enabledExtensions = enabledExtensionsIds
+      .filter(extensionId => {
+        const ext = installedExtensions.find(
+          extension => extension.id === extensionId,
+        );
+
+        if (!ext) {
+          console.warn(
+            `Could not load extension ${extensionId} for recipe ${this.id}`,
+          );
+          return false;
+        }
+
+        return true;
+      })
+      .map(
+        extensionId =>
+          installedExtensions.find(extension => extension.id === extensionId)!,
+      );
 
     // computed
     this.path = data.path;

@@ -17,6 +17,7 @@ import {
 import ServiceModel from '../../models/Service';
 import RecipePreviewModel from '../../models/RecipePreview';
 import RecipeModel from '../../models/Recipe';
+import ExtensionModel from '../../models/Extension';
 import UserModel from '../../models/User';
 
 import sleep from '../../helpers/async-helpers';
@@ -35,18 +36,26 @@ import {
   getRecipeDirectory,
   getDevRecipeDirectory,
   loadRecipeConfig,
+  getExtensionDirectory,
+  loadExtensionConfig,
 } from '../../helpers/recipe-helpers';
 
 import { removeServicePartitionDirectory } from '../../helpers/service-helpers';
 
 const debug = require('../../preload-safe-debug')('Ferdium:ServerApi');
 
-module.paths.unshift(getDevRecipeDirectory(), getRecipeDirectory());
+module.paths.unshift(
+  getDevRecipeDirectory(),
+  getRecipeDirectory(),
+  getExtensionDirectory(),
+);
 
 export default class ServerApi {
   recipePreviews: any[] = [];
 
   recipes: any[] = [];
+
+  extensions: any[] = [];
 
   // User
   async login(email: string, passwordHash: string) {
@@ -330,6 +339,9 @@ export default class ServerApi {
 
   // Recipes
   async getInstalledRecipes() {
+    // Load installed extensions before loading recipes
+    await this.getInstalledExtensions();
+
     const recipesDirectory = getRecipeDirectory();
     const paths = readdirSync(recipesDirectory).filter(
       file =>
@@ -342,7 +354,7 @@ export default class ServerApi {
       .map(id => {
         // eslint-disable-next-line import/no-dynamic-require
         const Recipe = require(id)(RecipeModel);
-        return new Recipe(loadRecipeConfig(id));
+        return new Recipe(loadRecipeConfig(id), this.extensions);
       })
       .filter(recipe => recipe.id);
 
@@ -448,6 +460,24 @@ export default class ServerApi {
     removeSync(join(recipesDirectory, recipeId, 'recipe.tar.gz'));
 
     return id;
+  }
+
+  // Extensions
+  async getInstalledExtensions() {
+    const extensionsDirectory = getExtensionDirectory();
+    const paths = readdirSync(extensionsDirectory).filter(
+      file =>
+        statSync(join(extensionsDirectory, file)).isDirectory() &&
+        file !== 'temp' &&
+        file !== 'dev',
+    );
+
+    this.extensions = paths
+      .map(id => new ExtensionModel(loadExtensionConfig(id)))
+      .filter(extension => extension.id);
+
+    debug('StubServerApi::getInstalledExtensions resolves', this.extensions);
+    return this.extensions;
   }
 
   // Health Check
@@ -593,7 +623,7 @@ export default class ServerApi {
           try {
             // eslint-disable-next-line import/no-dynamic-require
             Recipe = require(id)(RecipeModel);
-            return new Recipe(loadRecipeConfig(id));
+            return new Recipe(loadRecipeConfig(id), this.extensions);
           } catch (error) {
             console.error(error);
           }

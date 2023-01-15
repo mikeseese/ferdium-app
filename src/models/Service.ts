@@ -1,5 +1,5 @@
 import { autorun, action, computed, makeObservable, observable } from 'mobx';
-import { ipcRenderer } from 'electron';
+import { ipcRenderer, session } from 'electron';
 import { webContents } from '@electron/remote';
 import normalizeUrl from 'normalize-url';
 import { join } from 'path';
@@ -12,6 +12,7 @@ import { DEFAULT_SERVICE_ORDER, DEFAULT_SERVICE_SETTINGS } from '../config';
 import { ifUndefined } from '../jsUtils';
 import { IRecipe } from './Recipe';
 import { needsToken } from '../api/apiBase';
+import { getExtensionDirectory } from '../helpers/recipe-helpers';
 
 const debug = require('../preload-safe-debug')('Ferdium:Service');
 
@@ -493,6 +494,16 @@ export default class Service {
       this._didLoad();
     };
 
+    // eslint-disable-next-line unicorn/consistent-function-scoping
+    const didFinishLoad = () => {
+      for (const extension of this.recipe.enabledExtensions) {
+        session.defaultSession.loadExtension(
+          getExtensionDirectory(extension.id),
+        );
+      }
+    };
+
+    this.webview.addEventListener('did-finish-load', didFinishLoad.bind(this));
     this.webview.addEventListener('did-frame-finish-load', didLoad.bind(this));
     this.webview.addEventListener('did-navigate', didLoad.bind(this));
 
